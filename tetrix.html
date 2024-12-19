@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tetris Modificado</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #2c3e50;
+            font-family: 'Arial', sans-serif;
+        }
+        #game-wrapper {
+            display: flex;
+            align-items: stretch;
+            background-color: #34495e;
+            border: 4px solid #2c3e50;
+        }
+        #score-panel {
+            width: 200px;
+            padding: 20px;
+            background-color: #2c3e50;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        #score-details {
+            text-align: center;
+        }
+        #game-board {
+            background-color: #34495e;
+            position: relative;
+        }
+        .score-item {
+            margin-bottom: 15px;
+            background-color: rgba(255,255,255,0.1);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .brick-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(45deg, rgba(139,69,19,0.2) 25%, transparent 25%),
+                linear-gradient(-45deg, rgba(139,69,19,0.2) 25%, transparent 25%);
+            background-size: 60px 60px;
+            pointer-events: none;
+            z-index: -1;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="score-panel">
+            <div id="score-details">
+                <div class="score-item">
+                    <h3>Puntuación</h3>
+                    <div id="score">0</div>
+                </div>
+                <div class="score-item">
+                    <h3>Líneas</h3>
+                    <div id="lines">0</div>
+                </div>
+                <div class="score-item">
+                    <h3>Nivel</h3>
+                    <div id="level">1</div>
+                </div>
+                <div class="score-item">
+                    <h3>Siguiente Pieza</h3>
+                    <div id="next-piece"></div>
+                </div>
+            </div>
+        </div>
+        <div id="game-container">
+            <div id="game-board">
+                <div class="brick-background"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    class Tetris {
+        constructor() {
+            this.board = document.getElementById('game-board');
+            this.scoreElement = document.getElementById('score');
+            this.linesElement = document.getElementById('lines');
+            this.levelElement = document.getElementById('level');
+            
+            this.blockSize = 30;
+            this.columns = 10;
+            this.rows = 20;
+            
+            this.score = 0;
+            this.lines = 0;
+            this.level = 1;
+
+            this.board.style.width = `${this.columns * this.blockSize}px`;
+            this.board.style.height = `${this.rows * this.blockSize}px`;
+
+            this.grid = Array.from({length: this.rows}, () => 
+                Array(this.columns).fill(null));
+
+            this.shapes = [
+                // I-piece
+                [[1,1,1,1]],
+                
+                // O-piece
+                [[1,1],[1,1]],
+                
+                // T-piece
+                [[0,1,0],[1,1,1]],
+                
+                // L-piece
+                [[0,0,1],[1,1,1]],
+                
+                // J-piece
+                [[1,0,0],[1,1,1]],
+                
+                // S-piece
+                [[0,1,1],[1,1,0]],
+                
+                // Z-piece
+                [[1,1,0],[0,1,1]]
+            ];
+
+            this.colors = [
+                '#FF0000', // Red
+                '#00FF00', // Green
+                '#0000FF', // Blue
+                '#FFFF00', // Yellow
+                '#FFA500', // Orange
+                '#800080'  // Purple
+            ];
+
+            this.currentPiece = null;
+            this.dropSpeed = 500;
+            this.lastDropTime = 0;
+
+            this.setupControls();
+            this.createNewPiece();
+            this.gameLoop();
+        }
+
+        setupControls() {
+            document.addEventListener('keydown', (e) => {
+                switch(e.key) {
+                    case 'ArrowLeft': this.movePiece(-1); break;
+                    case 'ArrowRight': this.movePiece(1); break;
+                    case 'ArrowDown': this.dropPiece(); break;
+                    case ' ': this.rotatePiece(); break;
+                }
+            });
+        }
+
+        createNewPiece() {
+            const randomShapeIndex = Math.floor(Math.random() * this.shapes.length);
+            const color = this.colors[Math.floor(Math.random() * this.colors.length)];
+            
+            this.currentPiece = {
+                x: Math.floor(this.columns / 2) - 1,
+                y: 0,
+                color: color,
+                shape: this.shapes[randomShapeIndex]
+            };
+
+            if (this.checkCollision()) {
+                alert('¡Juego Terminado!');
+                this.resetGame();
+            }
+        }
+
+        drawBoard() {
+            this.board.innerHTML = '<div class="brick-background"></div>';
+
+            // Dibujar grid actual
+            for (let y = 0; y < this.rows; y++) {
+                for (let x = 0; x < this.columns; x++) {
+                    const cell = this.grid[y][x];
+                    if (cell) {
+                        const block = document.createElement('div');
+                        block.style.position = 'absolute';
+                        block.style.width = `${this.blockSize}px`;
+                        block.style.height = `${this.blockSize}px`;
+                        block.style.left = `${x * this.blockSize}px`;
+                        block.style.top = `${y * this.blockSize}px`;
+                        block.style.backgroundColor = cell;
+                        block.style.border = '1px solid rgba(255,255,255,0.1)';
+                        this.board.appendChild(block);
+                    }
+                }
+            }
+
+            // Dibujar pieza actual
+            if (this.currentPiece) {
+                this.currentPiece.shape.forEach((row, dy) => {
+                    row.forEach((cell, dx) => {
+                        if (cell) {
+                            const block = document.createElement('div');
+                            block.style.position = 'absolute';
+                            block.style.width = `${this.blockSize}px`;
+                            block.style.height = `${this.blockSize}px`;
+                            block.style.left = `${(this.currentPiece.x + dx) * this.blockSize}px`;
+                            block.style.top = `${(this.currentPiece.y + dy) * this.blockSize}px`;
+                            block.style.backgroundColor = this.currentPiece.color;
+                            block.style.border = '1px solid rgba(255,255,255,0.1)';
+                            this.board.appendChild(block);
+                        }
+                    });
+                });
+            }
+        }
+
+        movePiece(dx) {
+            this.currentPiece.x += dx;
+            if (this.checkCollision()) {
+                this.currentPiece.x -= dx;
+            }
+            this.drawBoard();
+        }
+
+        rotatePiece() {
+            const originalShape = this.currentPiece.shape;
+            this.currentPiece.shape = this.currentPiece.shape[0].map((_, idx) => 
+                this.currentPiece.shape.map(row => row[idx]).reverse()
+            );
+
+            if (this.checkCollision()) {
+                this.currentPiece.shape = originalShape;
+            }
+            this.drawBoard();
+        }
+
+        dropPiece() {
+            this.currentPiece.y++;
+            if (this.checkCollision()) {
+                this.currentPiece.y--;
+                this.placePiece();
+                this.checkLines();
+                this.createNewPiece();
+            }
+            this.drawBoard();
+        }
+
+        placePiece() {
+            this.currentPiece.shape.forEach((row, dy) => {
+                row.forEach((cell, dx) => {
+                    if (cell) {
+                        const x = this.currentPiece.x + dx;
+                        const y = this.currentPiece.y + dy;
+                        if (x >= 0 && x < this.columns && y >= 0 && y < this.rows) {
+                            this.grid[y][x] = this.currentPiece.color;
+                        }
+                    }
+                });
+            });
+        }
+
+        checkLines() {
+            let linesCleared = 0;
+            for (let y = this.rows - 1; y >= 0; y--) {
+                if (this.grid[y].every(cell => cell !== null)) {
+                    // Eliminar línea
+                    this.grid.splice(y, 1);
+                    // Añadir nueva línea en la parte superior
+                    this.grid.unshift(Array(this.columns).fill(null));
+                    linesCleared++;
+                }
+            }
+
+            if (linesCleared > 0) {
+                // Calcular puntuación
+                const scoreMultiplier = [0, 40, 100, 300, 1200];
+                this.score += scoreMultiplier[linesCleared] * this.level;
+                this.lines += linesCleared;
+
+                // Aumentar nivel cada 10 líneas
+                if (Math.floor(this.lines / 10) + 1 > this.level) {
+                    this.level++;
+                    this.dropSpeed = Math.max(100, 500 - (this.level * 50));
+                }
+
+                // Actualizar elementos de interfaz
+                this.scoreElement.textContent = this.score;
+                this.linesElement.textContent = this.lines;
+                this.levelElement.textContent = this.level;
+            }
+        }
+
+        checkCollision() {
+            for (let y = 0; y < this.currentPiece.shape.length; y++) {
+                for (let x = 0; x < this.currentPiece.shape[y].length; x++) {
+                    if (!this.currentPiece.shape[y][x]) continue;
+
+                    const newX = this.currentPiece.x + x;
+                    const newY = this.currentPiece.y + y;
+
+                    // Verificar límites
+                    if (newX < 0 || newX >= this.columns || newY >= this.rows) {
+                        return true;
+                    }
+
+                    // Verificar colisión con otras piezas
+                    if (newY >= 0 && this.grid[newY][newX] !== null) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        gameLoop() {
+            const currentTime = Date.now();
+            if (currentTime - this.lastDropTime > this.dropSpeed) {
+                this.dropPiece();
+                this.lastDropTime = currentTime;
+            }
+            requestAnimationFrame(() => this.gameLoop());
+        }
+
+        resetGame() {
+            this.grid = Array.from({length: this.rows}, () => 
+                Array(this.columns).fill(null));
+            this.score = 0;
+            this.lines = 0;
+            this.level = 1;
+            this.dropSpeed = 500;
+            
+            this.scoreElement.textContent = '0';
+            this.linesElement.textContent = '0';
+            this.levelElement.textContent = '1';
+            
+            this.createNewPiece();
+        }
+    }
+
+    // Iniciar juego
+    const game = new Tetris();
+    </script>
+</body>
+</html>
